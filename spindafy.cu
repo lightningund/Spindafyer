@@ -9,8 +9,62 @@
 using img_ptr = const uint8_t* const;
 
 constexpr int k_size = 13;
+constexpr int k_len = k_size * k_size;
 
-__device__ float kernel[k_size * k_size];
+// Wrapper for an stbi image
+struct Img {
+	uint8_t* img_data;
+	int width;
+	int height;
+	int bpp;
+
+	Img(std::string filename) {
+		img_data = stbi_load(filename.c_str(), &width, &height, &bpp, 0);
+	}
+
+	~Img() {
+		stbi_image_free(img_data);
+	}
+
+	uint8_t operator[] (size_t idx) {
+		assert(idx < width * height * bpp);
+		return img_data[idx];
+	}
+};
+
+struct Spot {
+	std::array<float, k_len> kernel{};
+
+public:
+	Spot(std::string filename) {
+		Img img{filename};
+
+		assert(img.width == k_size);
+		assert(img.height == k_size);
+
+		// Turn the spot image into a kernel
+		for (int i = 0; i < img.width * img.height; ++i) {
+			kernel[i] = img[i * img.bpp] == 0 ? 1 : -1;
+			kernel[i] /= k_len;
+		}
+	}
+};
+
+// Wrapper for managed memory objects
+template <typename T>
+struct Managed {
+	T* raw;
+
+	Managed(size_t size) {
+		cudaMallocManaged(&raw, size);
+	}
+
+	~Managed() {
+		cudaFree(raw);
+	}
+};
+
+__device__ float kernel[k_len];
 
 // The kernel is anchored on the top left corner instead of the center
 // threadIdx x and y determine the location in the convolved image
@@ -72,32 +126,12 @@ void get_spinda_pid(img_ptr img, const int x, const int y, const unsigned int* p
 }
 
 int main() {
-	int width;
-	int height;
-	int bpp;
-
-	// Load in the first spot
-    uint8_t* spot_a = stbi_load("res/spot_1.png", &width, &height, &bpp, 0);
-
-	std::array<float, k_size * k_size> host_kernel{};
-
-	// Turn the spot image into a kernel
-	for (int i = 0; i < width * height; ++i) {
-		host_kernel[i] = spot_a[i * bpp] == 0 ? 1 : -1;
-		host_kernel[i] /= k_size * k_size;
-	}
-
-	// Debug
-	for (int i = 0; i < 20; ++i) {
-		std::cout << (int)spot_a[i] << " ";
-	}
-	std::cout << "\n" << bpp << "\n";
-
-	// Free the image after loading it
-    stbi_image_free(spot_a);
+	Spot spot_a{"res/spot_1.png"};
 
 	// Copy the kernel data over to the device
-	cudaMemcpyToSymbol(kernel, host_kernel.data(), k_size * k_size * sizeof(float), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(kernel, spot_a.kernel.data(), k_len * sizeof(float), 0, cudaMemcpyHostToDevice);
+
+	int width, height, bpp;
 
 	uint8_t* test_img = stbi_load("res/test.png", &width, &height, &bpp, 0);
 
@@ -110,22 +144,18 @@ int main() {
 
 	std::cout << img_size << ", " << width << ", " << height << ", " << bpp << "\n";
 
-	uint8_t* device_img;
-	cudaMallocManaged(&device_img, img_size);
-	cudaMemcpy(device_img, test_img, img_size, cudaMemcpyHostToDevice);
-
-	float* temp_arr;
-	cudaMallocManaged(&temp_arr, img_size * sizeof(float));
+	Managed<uint8_t> dev_img{img_size};
+	Managed<uint8_t> result_img{img_size};
+	cudaMemcpy(dev_img.raw, test_img, img_size, cudaMemcpyHostToDevice);
 
 	stbi_image_free(test_img);
 
-	uint8_t* result_img;
-	cudaMallocManaged(&result_img, img_size);
+	Managed<float> temp_arr{img_size * sizeof(float)};
 
 	for (int i = 0; i < (width / 16) - 1; ++i) {
 		for (int j = 0; j < (height / 16) - 1; ++j) {
 			// convolve<<<1, dim3{16, 16, 1}>>>(device_img, i * 16, j * 16, width, result_img);
-			conv_atomic<<<dim3{k_size, k_size, 1}, dim3{16, 16, 1}>>>(device_img, i * 16, j * 16, width, temp_arr);
+			conv_atomic<<<dim3{k_size, k_size, 1}, dim3{16, 16, 1}>>>(dev_img.raw, i * 16, j * 16, width, temp_arr.raw);
 		}
 	}
 
@@ -133,25 +163,21 @@ int main() {
 
 	cudaDeviceSynchronize();
 
-	convert<<<height, width>>>(temp_arr, result_img, img_size);
+	convert<<<height, width>>>(temp_arr.raw, result_img.raw, img_size);
 
 	cudaDeviceSynchronize();
 
 	// Debug
 	for (int j = 0; j < 1; ++j) {
 		for (int i = 0; i < 20; ++i) {
-			std::cout << (int)result_img[i + j * width] << " ";
+			std::cout << (int)result_img.raw[i + j * width] << " ";
 		}
 		std::cout << "\n";
 	}
 	std::cout << "\n";
 
 	// Write the convolved image back to file
-	stbi_write_png("convolved.png", width, height, 1, result_img, 1 * width);
-
-	// Free the device memory we allocated
-	cudaFree(device_img);
-	cudaFree(result_img);
+	stbi_write_png("convolved.png", width, height, 1, result_img.raw, 1 * width);
 
 	return 0;
 }

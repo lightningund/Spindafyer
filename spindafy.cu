@@ -17,7 +17,7 @@ __device__ float kernel[k_size * k_size];
 // Each block calculates one pixel in the kernel for all pixels in the convoluted area
 // Each thread adds the multiplied value of one pixel in the kernel
 __global__
-void conv_atomic(img_ptr img, /*const float* kernel, */const int x, const int y, const int iw, float* temp_arr) {
+void conv_atomic(img_ptr img, const int x, const int y, const int iw, float* temp_arr) {
 	// Make sure it's in the range of possible values for the spot
 	if (threadIdx.x >= 16 || threadIdx.y >= 16) return;
 	// Make sure it's in the range of the kernel
@@ -43,7 +43,7 @@ void convert(float* input, uint8_t* output, int n) {
 // threadIdx x and y determine the location in the convolved image
 // Each instance of this kernel calculates one pixel in the convolved image
 __global__
-void convolve(img_ptr img, const float* kernel, const int x, const int y, const int iw, uint8_t* convolved_img) {
+void convolve(img_ptr img, const int x, const int y, const int iw, uint8_t* convolved_img) {
 	// Make sure it's in the range of possible values for the spot
 	if (threadIdx.x >= 16 || threadIdx.y >= 16) return;
 
@@ -72,8 +72,6 @@ void get_spinda_pid(img_ptr img, const int x, const int y, const unsigned int* p
 }
 
 int main() {
-	// float* kernel;
-	// cudaMallocManaged(&kernel, k_size * k_size * sizeof(float));
 	int width;
 	int height;
 	int bpp;
@@ -124,8 +122,8 @@ int main() {
 
 	for (int i = 0; i < (width / 16) - 1; ++i) {
 		for (int j = 0; j < (height / 16) - 1; ++j) {
-			// convolve<<<1, dim3{16, 16, 1}>>>(device_img, kernel, i * 16, j * 16, width, result_img);
-			conv_atomic<<<dim3{k_size, k_size, 1}, dim3{16, 16, 1}>>>(device_img, /*kernel, */i * 16, j * 16, width, temp_arr);
+			// convolve<<<1, dim3{16, 16, 1}>>>(device_img, i * 16, j * 16, width, result_img);
+			conv_atomic<<<dim3{k_size, k_size, 1}, dim3{16, 16, 1}>>>(device_img, i * 16, j * 16, width, temp_arr);
 		}
 	}
 
@@ -148,7 +146,6 @@ int main() {
 
 	stbi_write_png("convolved.png", width, height, 1, result_img, 1 * width);
 
-	// cudaFree(kernel);
 	cudaFree(device_img);
 	cudaFree(result_img);
 

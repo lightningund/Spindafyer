@@ -76,26 +76,28 @@ int main() {
 	int height;
 	int bpp;
 
+	// Load in the first spot
     uint8_t* spot_a = stbi_load("res/spot_1.png", &width, &height, &bpp, 0);
 
 	std::array<float, k_size * k_size> host_kernel{};
 
-	// Turn the spot into a kernel
+	// Turn the spot image into a kernel
 	for (int i = 0; i < width * height; ++i) {
 		host_kernel[i] = spot_a[i * bpp] == 0 ? 1 : -1;
 		host_kernel[i] /= k_size * k_size;
 	}
 
-	cudaMemcpyToSymbol(kernel, host_kernel.data(), k_size * k_size * sizeof(float), 0, cudaMemcpyHostToDevice);
-
 	// Debug
 	for (int i = 0; i < 20; ++i) {
 		std::cout << (int)spot_a[i] << " ";
 	}
-
 	std::cout << "\n" << bpp << "\n";
 
+	// Free the image after loading it
     stbi_image_free(spot_a);
+
+	// Copy the kernel data over to the device
+	cudaMemcpyToSymbol(kernel, host_kernel.data(), k_size * k_size * sizeof(float), 0, cudaMemcpyHostToDevice);
 
 	uint8_t* test_img = stbi_load("res/test.png", &width, &height, &bpp, 0);
 
@@ -135,17 +137,19 @@ int main() {
 
 	cudaDeviceSynchronize();
 
+	// Debug
 	for (int j = 0; j < 1; ++j) {
 		for (int i = 0; i < 20; ++i) {
 			std::cout << (int)result_img[i + j * width] << " ";
 		}
 		std::cout << "\n";
 	}
-
 	std::cout << "\n";
 
+	// Write the convolved image back to file
 	stbi_write_png("convolved.png", width, height, 1, result_img, 1 * width);
 
+	// Free the device memory we allocated
 	cudaFree(device_img);
 	cudaFree(result_img);
 

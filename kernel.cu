@@ -1,4 +1,7 @@
 #include "kernel.h"
+#include <iostream>
+
+__device__ float kernel[k_len];
 
 __constant__ int2 spot_offsets[] = {
 	{8, 6},
@@ -31,6 +34,7 @@ __global__
 void convert(float* input, uint8_t* output, int n) {
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx >= n) return;
+	// printf("result:%f\n", input[idx]);
 	output[idx] = input[idx];
 }
 

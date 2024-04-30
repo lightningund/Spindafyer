@@ -55,6 +55,7 @@ template <typename T>
 struct Managed {
 	T* raw;
 
+	// Takes the size as a number of bytes
 	Managed(size_t size) {
 		cudaMallocManaged(&raw, size);
 	}

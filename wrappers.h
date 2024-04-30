@@ -5,6 +5,15 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 
+#define cucheck_dev(call) {\
+	cudaError_t cucheck_err = (call);\
+	if (cucheck_err != cudaSuccess) {\
+		const char* err_str = cudaGetErrorString(cucheck_err);\
+		printf("%s (%d): %s\n", __FILE__, __LINE__, err_str);\
+		assert(0);\
+	}\
+}
+
 // Wrapper for an stbi image
 struct Img {
 	uint8_t* img_data;

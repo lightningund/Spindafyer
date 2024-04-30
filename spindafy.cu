@@ -3,31 +3,13 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#undef STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+#undef STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include "kernel.h"
-
-// Wrapper for an stbi image
-struct Img {
-	u8_t* img_data;
-	int width;
-	int height;
-	int bpp;
-
-	Img(std::string filename) {
-		img_data = stbi_load(filename.c_str(), &width, &height, &bpp, 0);
-	}
-
-	~Img() {
-		stbi_image_free(img_data);
-	}
-
-	u8_t operator[] (size_t idx) {
-		assert(idx < width * height * bpp);
-		return img_data[idx];
-	}
-};
+#include "wrappers.h"
 
 struct Spot {
 	std::array<float, k_len> kernel{};
@@ -47,21 +29,6 @@ public:
 	}
 };
 
-// Wrapper for managed memory objects
-template <typename T>
-struct Managed {
-	T* raw;
-
-	// Takes the size as a number of bytes
-	Managed(size_t size) {
-		cudaMallocManaged(&raw, size);
-	}
-
-	~Managed() {
-		cudaFree(raw);
-	}
-};
-
 int main() {
 	Spot spot_a{"res/spot_1.png"};
 
@@ -70,9 +37,9 @@ int main() {
 
 	int width, height, bpp;
 
-	u8_t* test_img = stbi_load("res/test.png", &width, &height, &bpp, 0);
+	uint8_t* test_img = stbi_load("res/test.png", &width, &height, &bpp, 0);
 
-	size_t img_size = width * height * sizeof(u8_t);
+	size_t img_size = width * height * sizeof(uint8_t);
 
 	// Shrink down the image to be one byte per pixel
 	for (int i = 0; i < width * height; ++i) {
@@ -81,8 +48,8 @@ int main() {
 
 	std::cout << img_size << ", " << width << ", " << height << ", " << bpp << "\n";
 
-	Managed<u8_t> dev_img{img_size};
-	Managed<u8_t> result_img{img_size};
+	Managed<uint8_t> dev_img{img_size};
+	Managed<uint8_t> result_img{img_size};
 	cudaMemcpy(dev_img.raw, test_img, img_size, cudaMemcpyHostToDevice);
 
 	stbi_image_free(test_img);

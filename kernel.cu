@@ -28,7 +28,7 @@ void conv_atomic(img_ptr img, const int x, const int y, const int iw, float* tem
 }
 
 __global__
-void convert(float* input, u8_t* output, int n) {
+void convert(float* input, uint8_t* output, int n) {
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx >= n) return;
 	output[idx] = input[idx];
@@ -38,7 +38,7 @@ void convert(float* input, u8_t* output, int n) {
 // threadIdx x and y determine the location in the convolved image
 // Each instance of this kernel calculates one pixel in the convolved image
 __global__
-void convolve(img_ptr img, const int x, const int y, const int iw, u8_t* convolved_img) {
+void convolve(img_ptr img, const int x, const int y, const int iw, uint8_t* convolved_img) {
 	// Make sure it's in the range of possible values for the spot
 	if (threadIdx.x >= 16 || threadIdx.y >= 16) return;
 
